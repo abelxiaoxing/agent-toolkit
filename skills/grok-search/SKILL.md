@@ -45,6 +45,7 @@ python "<SKILL_DIR>/scripts/groksearch_entry.py" --help
 
 # Web search
 python "<SKILL_DIR>/scripts/groksearch_entry.py" web_search --query "search terms" [--platform "GitHub"] [--min-results 3] [--max-results 10] [--model "grok-4-fast"] [--extra-sources 6]
+# If you need broader search coverage, you can add Tavily sources explicitly, for example: --extra-sources 3
 
 # Fetch webpage
 python "<SKILL_DIR>/scripts/groksearch_entry.py" web_fetch --url "https://..." [--out file.md] [--fallback-grok]
@@ -81,7 +82,7 @@ python "<SKILL_DIR>/scripts/groksearch_entry.py" toggle_builtin_tools --action o
 
 ### Phase 1: Query Construction
 - **Intent Recognition**: Broad search → `web_search` | Deep retrieval → `web_fetch`
-- **Parameter Optimization**: Set `platform` for specific sources, adjust result counts
+- **Parameter Optimization**: Set `platform` for specific sources, adjust result counts; if you need broader source coverage, consider adding `--extra-sources 3`
 
 ### Phase 2: Search Execution
 1. Start with `web_search` for structured summaries
@@ -100,6 +101,8 @@ python "<SKILL_DIR>/scripts/groksearch_entry.py" toggle_builtin_tools --action o
 | Connection Failure | Run `get_config_info`, verify API URL/Key |
 | No Results | Broaden search terms |
 | Fetch Timeout | Try alternative sources |
+| Tavily unavailable while using `--extra-sources` | Command keeps Grok results and prints a Tavily warning to stderr |
+| Tavily extract failure | Use `--fallback-grok`, or inspect the Tavily warning/error message |
 
 ## Anti-Patterns
 

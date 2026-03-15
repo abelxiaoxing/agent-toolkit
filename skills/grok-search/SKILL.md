@@ -11,42 +11,53 @@ Enhanced web search via Grok API CLI.
 ## CLI Commands
 
 ```bash
-# Recommended entrypoint (portable, shareable)
-# - Default: use uv to manage repo-local .venv + install deps from requirements.txt
-# - Fallback (if uv missing): python -m venv + pip
-# - API keys must come from env or .env file (never pass keys via CLI args)
-#
-# Optional:
-#   GROKSEARCH_PYTHON=3.12 ./groksearch ...
-#   GROKSEARCH_PYTHON=/abs/path/to/python ./groksearch ...
+# Canonical entrypoint (agents + cross-platform)
+# - Resolve the installed skill directory first; do not assume the current repo contains skills/grok-search
+# - Prefer user-level skill directories under $HOME first, for example:
+#   $HOME/.claude/skills/grok-search
+#   $HOME/.codex/skills/grok-search
+#   $HOME/.config/agents/skills/grok-search
+# - If not found, check project-level locations:
+#   .claude/skills/grok-search
+#   .codex/skills/grok-search
+#   .agents/skills/grok-search
+# - Use system python only to bootstrap; entry.py creates/reuses repo-local .venv
+# - Never invoke scripts/groksearch_cli.py directly
 #
 # One-time setup:
 #   cp .env.example .env
-./groksearch --help
+python "<SKILL_DIR>/scripts/groksearch_entry.py" --help
 
 # Environment (required): GROK_API_URL, GROK_API_KEY
 # Environment (optional): GROK_MODEL, GROK_DEBUG, GROK_RETRY_*
 # Environment (optional fetch/map): TAVILY_API_KEY, TAVILY_API_URL, TAVILY_ENABLED
 #
-# .env discovery order:
-# 1) $PWD/.env
-# 2) scripts/.env
-# 3) repo_root/.env
+# .env path:
+# skills/grok-search/.env
+#
+# Bootstrap controls (optional):
+# GROKSEARCH_VENV_DIR=/path/to/venv
+# GROKSEARCH_PYTHON=3.12
+# AGENTS_SKILLS_PYTHON=/abs/path/to/python
+
+# Optional if you intentionally change into the installed skill directory first:
+# cd "<SKILL_DIR>" && python scripts/groksearch_entry.py --help
 
 # Web search
-./groksearch web_search --query "search terms" [--platform "GitHub"] [--min-results 3] [--max-results 10] [--model "grok-4-fast"] [--extra-sources 6]
+python "<SKILL_DIR>/scripts/groksearch_entry.py" web_search --query "search terms" [--platform "GitHub"] [--min-results 3] [--max-results 10] [--model "grok-4-fast"] [--extra-sources 6]
+# If you need broader search coverage, you can add Tavily sources explicitly, for example: --extra-sources 3
 
 # Fetch webpage
-./groksearch web_fetch --url "https://..." [--out file.md] [--fallback-grok]
+python "<SKILL_DIR>/scripts/groksearch_entry.py" web_fetch --url "https://..." [--out file.md] [--fallback-grok]
 
 # Map website structure (Tavily)
-./groksearch web_map --url "https://..." [--max-depth 2] [--limit 80]
+python "<SKILL_DIR>/scripts/groksearch_entry.py" web_map --url "https://..." [--max-depth 2] [--limit 80]
 
 # Check config
-./groksearch get_config_info [--no-test]
+python "<SKILL_DIR>/scripts/groksearch_entry.py" get_config_info [--no-test]
 
 # Toggle built-in tools
-./groksearch toggle_builtin_tools --action on|off|status [--root /path/to/project]
+python "<SKILL_DIR>/scripts/groksearch_entry.py" toggle_builtin_tools --action on|off|status [--root /path/to/project]
 ```
 
 ## Tool Routing Policy
@@ -54,8 +65,8 @@ Enhanced web search via Grok API CLI.
 
 | Scenario | Disabled | Use Instead |
 |----------|----------|-------------|
-| Web Search | `WebSearch` | CLI `web_search` |
-| Web Fetch | `WebFetch` | CLI `web_fetch` |
+| Web Search | `WebSearch` | CLI `web_search` via `groksearch_entry.py` |
+| Web Fetch | `WebFetch` | CLI `web_fetch` via `groksearch_entry.py` |
 
 ### Tool Capability Matrix
 
@@ -71,7 +82,7 @@ Enhanced web search via Grok API CLI.
 
 ### Phase 1: Query Construction
 - **Intent Recognition**: Broad search → `web_search` | Deep retrieval → `web_fetch`
-- **Parameter Optimization**: Set `platform` for specific sources, adjust result counts
+- **Parameter Optimization**: Set `platform` for specific sources, adjust result counts; if you need broader source coverage, consider adding `--extra-sources 3`
 
 ### Phase 2: Search Execution
 1. Start with `web_search` for structured summaries
@@ -90,11 +101,14 @@ Enhanced web search via Grok API CLI.
 | Connection Failure | Run `get_config_info`, verify API URL/Key |
 | No Results | Broaden search terms |
 | Fetch Timeout | Try alternative sources |
+| Tavily unavailable while using `--extra-sources` | Command keeps Grok results and prints a Tavily warning to stderr |
+| Tavily extract failure | Use `--fallback-grok`, or inspect the Tavily warning/error message |
 
 ## Anti-Patterns
 
 | Prohibited | Correct |
 |------------|---------|
 | No source citation | Include `Source [<sup>1</sup>](URL)` |
-| Give up after one failure | Retry at least once |
+| Assume current repo has `skills/grok-search` | Check global skill directories under `$HOME` first, then project-level `.claude/.codex/.agents`, then call `<SKILL_DIR>/scripts/groksearch_entry.py` |
+| Call `scripts/groksearch_cli.py` directly | Call `python scripts/groksearch_entry.py ...` |
 | Use built-in WebSearch/WebFetch | Use GrokSearch CLI |

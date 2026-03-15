@@ -18,7 +18,7 @@ try:
     from tenacity import AsyncRetrying, retry_if_exception, stop_after_attempt, wait_random_exponential
     from tenacity.wait import wait_base
 except ImportError:
-    print("Error: 所需包未安装。请运行: ./groksearch (自动安装依赖) 或 pip install httpx tenacity", file=sys.stderr)
+    print("Error: 所需包未安装。请运行: python scripts/groksearch_entry.py --help 或 pip install httpx tenacity", file=sys.stderr)
     sys.exit(1)
 
 
@@ -210,6 +210,18 @@ FETCH_PROMPT = """# 角色: 网页内容获取器
 - 不要摘要 - 返回完整内容
 - 使用 UTF-8 编码
 """
+
+
+def _get_tavily_status() -> tuple[bool, Optional[str]]:
+    if not config.tavily_enabled:
+        return False, "Tavily 已禁用 (TAVILY_ENABLED=false)"
+    if not config.tavily_api_key:
+        return False, "TAVILY_API_KEY 未配置"
+    return True, None
+
+
+def _emit_tavily_warning(message: str) -> None:
+    print(f"Tavily warning: {message}", file=sys.stderr)
 
 
 # ============================================================================
@@ -445,10 +457,11 @@ class GrokSearchProvider:
 # Tavily
 # ============================================================================
 
-async def _call_tavily_extract(url: str) -> Optional[str]:
+async def _call_tavily_extract(url: str) -> tuple[Optional[str], Optional[str]]:
+    has_tavily, reason = _get_tavily_status()
+    if not has_tavily:
+        return None, reason
     api_key = config.tavily_api_key
-    if not api_key or not config.tavily_enabled:
-        return None
 
     endpoint = f"{config.tavily_api_url.rstrip('/')}/extract"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
@@ -458,21 +471,27 @@ async def _call_tavily_extract(url: str) -> Optional[str]:
             response = await client.post(endpoint, headers=headers, json=body)
             response.raise_for_status()
             data = response.json()
-    except Exception:
-        return None
+    except httpx.TimeoutException:
+        return None, "Tavily extract 超时"
+    except httpx.HTTPStatusError as e:
+        return None, f"Tavily extract HTTP {e.response.status_code}"
+    except Exception as e:
+        return None, f"Tavily extract 错误: {str(e)}"
 
     results = (data or {}).get("results") or []
     if isinstance(results, list) and results:
         content = (results[0] or {}).get("raw_content") or ""
         if isinstance(content, str) and content.strip():
-            return content
-    return None
+            return content, None
+        return None, "Tavily extract 返回空内容"
+    return None, "Tavily extract 未返回结果"
 
 
-async def _call_tavily_search(query: str, max_results: int = 6) -> Optional[list[dict]]:
+async def _call_tavily_search(query: str, max_results: int = 6) -> tuple[list[dict], Optional[str]]:
+    has_tavily, reason = _get_tavily_status()
+    if not has_tavily:
+        return [], reason
     api_key = config.tavily_api_key
-    if not api_key or not config.tavily_enabled:
-        return None
 
     endpoint = f"{config.tavily_api_url.rstrip('/')}/search"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
@@ -488,12 +507,16 @@ async def _call_tavily_search(query: str, max_results: int = 6) -> Optional[list
             response = await client.post(endpoint, headers=headers, json=body)
             response.raise_for_status()
             data = response.json()
-    except Exception:
-        return None
+    except httpx.TimeoutException:
+        return [], "Tavily search 超时"
+    except httpx.HTTPStatusError as e:
+        return [], f"Tavily search HTTP {e.response.status_code}"
+    except Exception as e:
+        return [], f"Tavily search 错误: {str(e)}"
 
     results = (data or {}).get("results") or []
     if not isinstance(results, list) or not results:
-        return None
+        return [], None
     return [
         {
             "title": (r or {}).get("title", "") or "",
@@ -501,7 +524,7 @@ async def _call_tavily_search(query: str, max_results: int = 6) -> Optional[list
             "description": (r or {}).get("content", "") or "",
         }
         for r in results
-    ]
+    ], None
 
 
 async def _call_tavily_map(
@@ -607,34 +630,43 @@ async def cmd_web_search(args):
             merged: list[dict] = parsed
 
             extra_sources = int(args.extra_sources or 0)
+            if extra_sources < 0:
+                raise ValueError("--extra-sources 必须大于等于 0")
             has_tavily = bool(config.tavily_api_key) and config.tavily_enabled
-            if extra_sources > 0 and has_tavily:
-                extras = await _call_tavily_search(args.query, extra_sources) or []
+            if extra_sources > 0:
+                if not has_tavily:
+                    _, tavily_reason = _get_tavily_status()
+                    if tavily_reason:
+                        _emit_tavily_warning(f"已请求 --extra-sources {extra_sources}，但 {tavily_reason}；仅返回 Grok 搜索结果")
+                else:
+                    extras, tavily_warning = await _call_tavily_search(args.query, extra_sources)
+                    if tavily_warning:
+                        _emit_tavily_warning(f"{tavily_warning}；仅附加 Grok 搜索结果")
 
-                seen: set[str] = set()
-                out: list[dict] = []
-                for item in merged:
-                    url = (item or {}).get("url", "")
-                    if isinstance(url, str) and url:
+                    seen: set[str] = set()
+                    out: list[dict] = []
+                    for item in merged:
+                        url = (item or {}).get("url", "")
+                        if isinstance(url, str) and url:
+                            seen.add(url)
+                        out.append(item)
+
+                    for item in extras:
+                        url = (item or {}).get("url", "")
+                        if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+                            continue
+                        if url in seen:
+                            continue
                         seen.add(url)
-                    out.append(item)
+                        out.append(
+                            {
+                                "title": (item or {}).get("title", "") or "",
+                                "url": url,
+                                "description": (item or {}).get("description", "") or "",
+                            }
+                        )
 
-                for item in extras:
-                    url = (item or {}).get("url", "")
-                    if not isinstance(url, str) or not url.startswith(("http://", "https://")):
-                        continue
-                    if url in seen:
-                        continue
-                    seen.add(url)
-                    out.append(
-                        {
-                            "title": (item or {}).get("title", "") or "",
-                            "url": url,
-                            "description": (item or {}).get("description", "") or "",
-                        }
-                    )
-
-                merged = out
+                    merged = out
 
             print(json.dumps(merged, ensure_ascii=False, indent=2))
     except ValueError as e:
@@ -646,11 +678,18 @@ async def cmd_web_search(args):
 
 
 async def cmd_web_fetch(args):
-    has_tavily = bool(config.tavily_api_key) and config.tavily_enabled
+    has_tavily, tavily_reason = _get_tavily_status()
 
-    result = await _call_tavily_extract(args.url) if has_tavily else None
+    result = None
+    tavily_error = None
+    if has_tavily:
+        result, tavily_error = await _call_tavily_extract(args.url)
 
     use_grok_fallback = bool(args.fallback_grok) or (not has_tavily)
+    if not has_tavily and tavily_reason:
+        _emit_tavily_warning(f"{tavily_reason}；web_fetch 将改用 Grok")
+    if tavily_error and use_grok_fallback:
+        _emit_tavily_warning(f"{tavily_error}；web_fetch 将改用 Grok")
     if not result and use_grok_fallback:
         try:
             provider = GrokSearchProvider(config.grok_api_url, config.grok_api_key, config.grok_model)
@@ -662,6 +701,9 @@ async def cmd_web_fetch(args):
             print(f"API错误: {e.response.status_code}", file=sys.stderr)
             sys.exit(1)
 
+    if not result and tavily_error and not use_grok_fallback:
+        print(f"错误: {tavily_error}", file=sys.stderr)
+        sys.exit(1)
     if not result or not str(result).strip():
         print("错误: 获取内容失败", file=sys.stderr)
         sys.exit(1)

@@ -9,3 +9,5 @@ skills/dev-browser/profiles/
 skills/dev-browser/tmp/
 */dist/
 */build/
+.claude/
+.codex/

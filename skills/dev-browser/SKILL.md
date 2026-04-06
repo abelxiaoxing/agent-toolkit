@@ -17,12 +17,21 @@ Browser automation that maintains page state across script executions. Write sma
 
 Two modes available. Ask the user if unclear which to use.
 
+### Resolving SKILL_DIR
+
+Prepend this to every Bash snippet (each starts a fresh shell). All examples below use `### SKILL_DIR ###` as a placeholder for this block:
+
+```bash
+SKILL_DIR=$(bash skills/dev-browser/resolve-skill-dir.sh 2>/dev/null) || { echo "Skill not found: dev-browser" >&2; exit 1; }
+```
+
 ### Standalone Mode (Default)
 
 Launches a new Chromium browser for fresh automation sessions.
 
 ```bash
-./skills/dev-browser/server.sh &
+### SKILL_DIR ###
+bash "$SKILL_DIR/server.sh" &
 ```
 
 Add `--headless` flag if user requests it. **Wait for the `Ready` message before running scripts.**
@@ -39,7 +48,8 @@ Connects to user's existing Chrome browser. Use this when:
 **Start the relay server:**
 
 ```bash
-cd skills/dev-browser && npm i && npm run start-extension &
+### SKILL_DIR ###
+(cd "$SKILL_DIR" && npm i && npm run start-extension) &
 ```
 
 Wait for `Waiting for extension to connect...` followed by `Extension connected` in the console. To know that a client has connected and the browser is ready to be controlled.
@@ -52,12 +62,13 @@ If the extension hasn't connected yet, tell the user to launch and activate it. 
 
 ## Writing Scripts
 
-> **Run all scripts from `skills/dev-browser/` directory.** The `@/` import alias requires this directory's config.
+> **Each standalone Bash snippet resolves `SKILL_DIR` inside the same snippet before changing directories.** The `@/` import alias requires the skill root's config.
 
 Execute scripts inline using heredocs:
 
 ```bash
-cd skills/dev-browser && npx tsx <<'EOF'
+### SKILL_DIR ###
+(cd "$SKILL_DIR" && npx tsx <<'EOF'
 import { connect, waitForPageLoad } from "@/client.js";
 
 const client = await connect();
@@ -70,6 +81,7 @@ await waitForPageLoad(page);
 console.log({ title: await page.title(), url: page.url() });
 await client.disconnect();
 EOF
+)
 ```
 
 **Write to `tmp/` files only when** the script needs reuse, is complex, or user explicitly requests it.
@@ -190,10 +202,11 @@ await element.click();
 
 ## Error Recovery
 
-Page state persists after failures. Debug with:
+Page state persists after failures. Re-resolve `SKILL_DIR` (see top of file) before debugging:
 
 ```bash
-cd skills/dev-browser && npx tsx <<'EOF'
+### SKILL_DIR ###
+(cd "$SKILL_DIR" && npx tsx <<'EOF'
 import { connect } from "@/client.js";
 
 const client = await connect();
@@ -208,4 +221,5 @@ console.log({
 
 await client.disconnect();
 EOF
+)
 ```

@@ -60,7 +60,7 @@ Codex、OpenCode、Claude Code 的 Skills 和 Commands 配置仓库。
 
 ## 安装与更新
 
-### 推荐：`npx` 一键安装
+### 方法一：npx 一键安装（推荐）
 
 ```bash
 # 安装到 ~/.agents，并自动完成 ~/.claude / ~/.codex 的链接
@@ -75,9 +75,13 @@ npx abelworkflow@latest
 > - 仓库显示名可以继续叫 `AbelWorkflow`，但不建议承诺 `npx AbelWorkflow`，这不符合 npm 当前命名规则。
 > - 一键安装会把仓库内容同步到 `~/.agents`，并自动建立下文 README 中的链接关系，无需再手动执行 `ln -s`。
 
-### 备用：Git 克隆安装
+### 方法二：源码克隆安装
 
-### Linux/macOS（bash/zsh）
+如需自定义修改或贡献代码，可手动克隆并建立符号链接。
+
+#### 1. 克隆仓库
+
+**Linux/macOS（bash/zsh）**
 
 ```bash
 # 首次安装
@@ -87,7 +91,7 @@ git clone https://github.com/abelxiaoxing/AbelWorkflow ~/.agents
 git -C ~/.agents pull
 ```
 
-### Windows（PowerShell）
+**Windows（PowerShell）**
 
 ```powershell
 # 首次安装
@@ -97,7 +101,7 @@ git clone https://github.com/abelxiaoxing/AbelWorkflow "$HOME\.agents"
 git -C "$HOME\.agents" pull
 ```
 
-## 链接到 Claude Code / Codex（`npx` 会自动完成）
+#### 2. 链接到 Claude Code / Codex
 
 > 目标：把本仓库作为「单一来源」，通过符号链接同步到 `~/.claude/` 和 `~/.codex/`。以后只需 `git -C ~/.agents pull`，两边配置会自动更新。
 

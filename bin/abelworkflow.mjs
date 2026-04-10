@@ -1,2 +1,7 @@
 #!/usr/bin/env node
-import "../lib/cli.mjs";
+import { main } from "../lib/cli.mjs";
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+});

@@ -35,9 +35,55 @@ python "<SKILL_DIR>/scripts/groksearch_entry.py" get_config_info [--no-test]
 python "<SKILL_DIR>/scripts/groksearch_entry.py" toggle_builtin_tools --action on|off|status [--root /path/to/project]
 ```
 
-## Failure Recovery
+## Tool Routing Policy
+### Forced Replacement Rules
 
-- Connection or auth failure: run `get_config_info` and verify `GROK_API_URL` and `GROK_API_KEY`.
-- `web_search` needs broader coverage: add `--extra-sources N`; if Tavily is unavailable, keep Grok results and note the warning.
-- `web_fetch` fails on Tavily extract: retry with `--fallback-grok`.
-- Hash-route/docsify pages may require the materialized markdown URL hinted by the CLI error.
+| Scenario | Disabled | Use Instead |
+|----------|----------|-------------|
+| Web Search | `WebSearch` | CLI `web_search` via `groksearch_entry.py` |
+| Web Fetch | `WebFetch` | CLI `web_fetch` via `groksearch_entry.py` |
+
+### Tool Capability Matrix
+
+| Tool | Parameters | Output |
+|------|------------|--------|
+| `web_search` | `query`(required), `platform`/`min_results`/`max_results`/`model`/`extra_sources`(optional) | `[{title,url,description}]` |
+| `web_fetch` | `url`(required), `out`/`fallback_grok`(optional) | Structured Markdown |
+| `web_map` | `url`(required), `instructions`/`max_depth`/`max_breadth`/`limit`/`timeout`(optional) | JSON string |
+| `get_config_info` | `no_test`(optional) | `{api_url,status,connection_test}` |
+| `toggle_builtin_tools` | `action`(on/off/status), `root`(optional) | `{blocked,deny_list}` |
+
+## Search Workflow
+
+### Phase 1: Query Construction
+- **Intent Recognition**: Broad search → `web_search` | Deep retrieval → `web_fetch`
+- **Parameter Optimization**: Set `platform` for specific sources, adjust result counts; if you need broader source coverage, consider adding `--extra-sources 3`
+
+### Phase 2: Search Execution
+1. Start with `web_search` for structured summaries
+2. Use `web_fetch` on key URLs if summaries insufficient
+3. Retry with adjusted query if first round unsatisfactory
+
+### Phase 3: Result Synthesis
+1. Cross-reference multiple sources
+2. **Must annotate source and date** for time-sensitive info
+3. **Must include source URLs**: `Title [1](URL)`
+
+## Error Handling
+
+| Error | Recovery |
+|-------|----------|
+| Connection Failure | Run `get_config_info`, verify API URL/Key |
+| No Results | Broaden search terms |
+| Fetch Timeout | Try alternative sources |
+| Tavily unavailable while using `--extra-sources` | Command keeps Grok results and prints a Tavily warning to stderr |
+| Tavily extract failure | Use `--fallback-grok`, or inspect the Tavily warning/error message |
+
+## Anti-Patterns
+
+| Prohibited | Correct |
+|------------|---------|
+| No source citation | Include `Source [1](URL)` |
+| Assume current repo has `skills/grok-search` | Check global skill directories under `$HOME` first, then project-level `.claude/.codex/.agents`, then call `<SKILL_DIR>/scripts/groksearch_entry.py` |
+| Call `scripts/groksearch_cli.py` directly | Call `python scripts/groksearch_entry.py ...` |
+| Use built-in WebSearch/WebFetch | Use GrokSearch CLI |

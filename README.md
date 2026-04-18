@@ -142,16 +142,34 @@ git -C "$HOME\.agents" pull
 
 #### 2. 执行本地初始化
 
+**Linux/macOS（bash/zsh）**
+
 ```bash
 cd ~/.agents
 node bin/abelworkflow.mjs
 ```
 
+**Windows（PowerShell）**
+
+```powershell
+Set-Location "$HOME\.agents"
+node .\bin\abelworkflow.mjs
+```
+
 如果只想重建链接，不进入菜单：
+
+**Linux/macOS（bash/zsh）**
 
 ```bash
 cd ~/.agents
 node bin/abelworkflow.mjs install
+```
+
+**Windows（PowerShell）**
+
+```powershell
+Set-Location "$HOME\.agents"
+node .\bin\abelworkflow.mjs install
 ```
 
 ### 映射关系（本仓库 → 配置目录）
@@ -164,9 +182,21 @@ node bin/abelworkflow.mjs install
 
 ### 验证（可选）
 
+**Linux/macOS（bash/zsh）**
+
 ```bash
 ls -la "$HOME/.claude/CLAUDE.md" "$HOME/.claude/commands/oc"
 ls -la "$HOME/.codex/AGENTS.md" "$HOME/.codex/prompts/"{init,research,plan,implementation,diagnose}.md
 cat "$HOME/.claude/settings.json" | head
 cat "$HOME/.codex/config.toml" | head
+```
+
+**Windows（PowerShell）**
+
+```powershell
+Get-Item "$HOME\.claude\CLAUDE.md", "$HOME\.claude\commands\oc"
+Get-Item "$HOME\.codex\AGENTS.md"
+Get-ChildItem "$HOME\.codex\prompts" | Where-Object { $_.Name -in @("init.md", "research.md", "plan.md", "implementation.md", "diagnose.md") }
+Get-Content "$HOME\.claude\settings.json" -TotalCount 10
+Get-Content "$HOME\.codex\config.toml" -TotalCount 10
 ```

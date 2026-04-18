@@ -43,6 +43,7 @@ async function main() {
       ensurePlaywrightChromium({
         isInstalled: () =>
           isPlaywrightChromiumInstalled({
+            skillDir: runtimePaths.skillDir,
             platform: process.platform,
             env: process.env,
             exists: existsSync,

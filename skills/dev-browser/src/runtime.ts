@@ -12,6 +12,7 @@ export interface PackageManager {
 }
 
 export interface ChromiumInstallCheckOptions {
+  skillDir: string;
   platform: NodeJS.Platform;
   env: NodeJS.ProcessEnv;
   exists: (path: string) => boolean;
@@ -66,21 +67,43 @@ export function getPlaywrightInstallCommand(manager: PackageManager): string {
   return [manager.command, ...manager.args].join(" ");
 }
 
+function normalizePathForComparison(path: string): string {
+  return path.replaceAll("\\", "/").replace(/\/+/g, "/").toLowerCase();
+}
+
 export function getPlaywrightBrowserRoots({
+  skillDir,
   platform,
   env,
 }: {
+  skillDir: string;
   platform: NodeJS.Platform;
   env: NodeJS.ProcessEnv;
 }): string[] {
   const explicitPath = env.PLAYWRIGHT_BROWSERS_PATH?.trim();
   if (explicitPath) {
+    if (explicitPath === "0") {
+      return [join(skillDir, "node_modules", "playwright-core", ".local-browsers")];
+    }
     return [explicitPath];
   }
 
   if (platform === "win32") {
-    const userProfile = env.USERPROFILE ?? env.HOME;
-    return userProfile ? [join(userProfile, "AppData", "Local", "ms-playwright")] : [];
+    const roots: string[] = [];
+    const localAppData = env.LOCALAPPDATA?.trim();
+    if (localAppData) {
+      roots.push(join(localAppData, "ms-playwright"));
+    }
+
+    const userProfile = env.USERPROFILE?.trim() ?? env.HOME?.trim();
+    if (userProfile) {
+      const fallbackRoot = join(userProfile, "AppData", "Local", "ms-playwright");
+      if (!roots.some((root) => normalizePathForComparison(root) === normalizePathForComparison(fallbackRoot))) {
+        roots.push(fallbackRoot);
+      }
+    }
+
+    return roots;
   }
 
   const home = env.HOME ?? env.USERPROFILE;
@@ -88,12 +111,13 @@ export function getPlaywrightBrowserRoots({
 }
 
 export function isPlaywrightChromiumInstalled({
+  skillDir,
   platform,
   env,
   exists,
   readDir,
 }: ChromiumInstallCheckOptions): boolean {
-  for (const root of getPlaywrightBrowserRoots({ platform, env })) {
+  for (const root of getPlaywrightBrowserRoots({ skillDir, platform, env })) {
     if (!exists(root)) {
       continue;
     }

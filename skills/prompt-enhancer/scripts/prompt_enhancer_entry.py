@@ -91,13 +91,54 @@ def create_venv() -> None:
     subprocess.run([python_bin, "-m", "venv", str(dir_path)], check=True)
 
 
+def first_non_empty(*values: str) -> str:
+    for value in values:
+        stripped = value.strip()
+        if stripped:
+            return stripped
+    return ""
+
+
+def env_value(*names: str) -> str:
+    return first_non_empty(*(os.environ.get(name, "") for name in names))
+
+
+def argv_value(flag: str, argv: Optional[List[str]] = None) -> str:
+    argv = sys.argv[1:] if argv is None else argv
+    for index, token in enumerate(argv):
+        if token == flag:
+            if index + 1 < len(argv):
+                return argv[index + 1].strip()
+            return ""
+        if token.startswith(f"{flag}="):
+            return token.split("=", 1)[1].strip()
+    return ""
+
+
+def resolved_provider(argv: Optional[List[str]] = None) -> Optional[str]:
+    argv = sys.argv[1:] if argv is None else argv
+    api_url = first_non_empty(argv_value("--url", argv), os.environ.get("PE_API_URL", ""))
+    api_key = first_non_empty(argv_value("--api-key", argv), os.environ.get("PE_API_KEY", ""))
+    model = first_non_empty(argv_value("--model", argv), os.environ.get("PE_MODEL", ""))
+
+    if api_url and api_key and model:
+        return "openai"
+    if api_url or api_key:
+        return None
+    if env_value("ANTHROPIC_API_KEY"):
+        return "anthropic"
+    if env_value("OPENAI_API_KEY"):
+        return "openai"
+    return None
+
+
 def required_modules() -> List[str]:
-    modules = []
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        modules.append("anthropic")
-    if os.environ.get("OPENAI_API_KEY"):
-        modules.append("openai")
-    return modules
+    provider = resolved_provider()
+    if provider == "anthropic":
+        return ["anthropic"]
+    if provider == "openai":
+        return ["openai"]
+    return []
 
 
 def install_targets(modules: List[str]) -> List[str]:

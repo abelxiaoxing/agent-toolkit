@@ -5,22 +5,20 @@
 Use the bootstrap entrypoint from the installed skill directory:
 
 ```bash
-# Basic usage
+# Assuming third-party config is already set in <SKILL_DIR>/.env or the environment
 python "<SKILL_DIR>/scripts/prompt_enhancer_entry.py" "your prompt here"
-
-# With custom model
-PE_MODEL=claude-sonnet-4-20250514 python "<SKILL_DIR>/scripts/prompt_enhancer_entry.py" "your prompt"
 ```
 
 `prompt_enhancer_entry.py` is the canonical entrypoint. It creates or reuses a skill-local virtual environment and then runs `scripts/enhance.py`.
+If `PE_API_URL`, `PE_API_KEY`, and `PE_MODEL` are not all present, do not call the script; rewrite the prompt directly with the current agent instead.
 
 ## Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `ANTHROPIC_API_KEY` | Anthropic API key for Claude | - |
-| `OPENAI_API_KEY` | OpenAI API key (fallback) | - |
-| `PE_MODEL` | Model to use | `claude-sonnet-4-20250514` |
+| `PE_API_URL` | Third-party OpenAI-compatible base URL | - |
+| `PE_API_KEY` | Third-party OpenAI-compatible API key | - |
+| `PE_MODEL` | Model to use on the third-party endpoint | - |
 | `PE_DEBUG` | Print bootstrap and fallback diagnostics to `stderr` | `0` |
 | `PROMPT_ENHANCER_VENV_DIR` | Override the skill-local venv path | `skills/prompt-enhancer/.venv` |
 | `PROMPT_ENHANCER_PYTHON` | Python version/spec for `uv venv --python` | - |
@@ -41,6 +39,8 @@ The enhanced prompt is written to `stdout`. Usage or debug diagnostics stay on `
 
 ### Piping Output
 
+Assuming `PE_API_URL`, `PE_API_KEY`, and `PE_MODEL` are already configured:
+
 ```bash
 # Pipe to clipboard (macOS)
 python "<SKILL_DIR>/scripts/prompt_enhancer_entry.py" "my prompt" | pbcopy
@@ -54,15 +54,17 @@ python "<SKILL_DIR>/scripts/prompt_enhancer_entry.py" "my prompt" | claude -p
 
 ### In Shell Scripts
 
+Assuming the environment is already configured:
+
 ```bash
 #!/bin/bash
 ENHANCED=$(python "$HOME/.agents/skills/prompt-enhancer/scripts/prompt_enhancer_entry.py" "$1")
 echo "$ENHANCED"
 ```
 
-## Manual Enhancement (No API)
+## Manual Enhancement (Current Agent)
 
-If no API key is available, you can manually apply the enhancement principles:
+If the user does not provide `url`, `apiKey`, and `model`, use the current agent directly and apply the enhancement principles:
 
 1. Read the user's prompt
 2. Apply the template from [TEMPLATE.md](TEMPLATE.md)
@@ -94,8 +96,8 @@ Run the entrypoint without a prompt to print usage information:
 python "$HOME/.agents/skills/prompt-enhancer/scripts/prompt_enhancer_entry.py"
 ```
 
-### No API Key
-The script will fall back to a local template-based enhancement if no API key is found.
+### Missing Third-Party Config
+The script requires `PE_API_URL`, `PE_API_KEY`, and `PE_MODEL`. If any field is missing, skip the script and use the current agent directly.
 
 ### Debug Fallbacks
-Set `PE_DEBUG=1` to show dependency-install, provider, or fallback diagnostics on `stderr`.
+Set `PE_DEBUG=1` to show dependency-install or configuration diagnostics on `stderr`.

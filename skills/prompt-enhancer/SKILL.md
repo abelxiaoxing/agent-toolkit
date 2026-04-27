@@ -19,12 +19,16 @@ Do not use this for general writing edits like email, docs, or PR copy.
 
 ## Do
 
+- Default path: rewrite the prompt directly with the current agent using the structure from [TEMPLATE.md](TEMPLATE.md).
+- Third-party path: use the Python entrypoint only when the user explicitly provides `url`, `apiKey`, and `model`, or when all three are already configured in `<SKILL_DIR>/.env`.
+
 ```bash
 python "<SKILL_DIR>/scripts/prompt_enhancer_entry.py" "user's raw prompt here"
 ```
 
 - Do not call `scripts/enhance.py` directly.
 - Use the installed skill directory for `<SKILL_DIR>`.
+- If any of `url`, `apiKey`, or `model` is missing, do not invoke the script. Use the current agent directly instead.
 - Optional setup: `cp "<SKILL_DIR>/.env.example" "<SKILL_DIR>/.env"`
 
 ## Output
@@ -33,7 +37,7 @@ python "<SKILL_DIR>/scripts/prompt_enhancer_entry.py" "user's raw prompt here"
 - Keep `stderr` for usage or optional debug output only.
 - Preserve the user's intent and explicit constraints.
 - Add structure and missing execution context only when it helps the agent act.
-- When falling back to the local template, use placeholders for unknown context instead of inventing new requirements.
+- When running directly in the current agent, use placeholders for unknown context instead of inventing new requirements.
 
 ## Notes
 

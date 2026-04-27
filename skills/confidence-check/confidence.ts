@@ -18,7 +18,7 @@
  *    - Low (<70%): Investigation incomplete, unclear root cause, missing official docs
  */
 
-import { existsSync, readdirSync } from 'fs';
+import { existsSync } from 'fs';
 import { join, dirname } from 'path';
 
 export interface Context {
@@ -236,65 +236,6 @@ export class ConfidenceChecker {
     // 2. Check solution addresses root cause
     // 3. Confirm fix aligns with best practices
     return context.root_cause_identified ?? false;
-  }
-
-  /**
-   * Check if existing patterns can be followed
-   *
-   * Looks for:
-   * - Similar test files
-   * - Common naming conventions
-   * - Established directory structure
-   */
-  private hasExistingPatterns(context: Context): boolean {
-    const testFile = context.test_file;
-    if (!testFile) {
-      return false;
-    }
-
-    const testDir = dirname(testFile);
-
-    // Check for other test files in same directory
-    if (existsSync(testDir)) {
-      try {
-        const files = readdirSync(testDir);
-        const testFiles = files.filter(f =>
-          f.startsWith('test_') && f.endsWith('.py')
-        );
-        return testFiles.length > 1;
-      } catch {
-        return false;
-      }
-    }
-
-    return false;
-  }
-
-  /**
-   * Check if implementation path is clear
-   *
-   * Considers:
-   * - Test name suggests clear purpose
-   * - Markers indicate test type
-   * - Context has sufficient information
-   */
-  private hasClearPath(context: Context): boolean {
-    // Check test name clarity
-    const testName = context.test_name ?? '';
-    if (!testName || testName === 'test_example') {
-      return false;
-    }
-
-    // Check for markers indicating test type
-    const markers = context.markers ?? [];
-    const knownMarkers = new Set([
-      'unit', 'integration', 'hallucination',
-      'performance', 'confidence_check', 'self_check'
-    ]);
-
-    const hasMarkers = markers.some(m => knownMarkers.has(m));
-
-    return hasMarkers || testName.length > 10;
   }
 
   /**

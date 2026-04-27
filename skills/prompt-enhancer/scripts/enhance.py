@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Prompt Enhancer CLI."""
+"""Prompt Enhancer CLI for OpenAI-compatible endpoints."""
 
+import argparse
 import os
 import sys
+from typing import Tuple
 
 from _dotenv import load_dotenv
 
@@ -42,110 +44,147 @@ Output Template:
 """
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="prompt_enhancer_entry.py",
+        description="Enhance a prompt through a third-party OpenAI-compatible API.",
+    )
+    parser.add_argument("--url", dest="api_url", help="Third-party OpenAI-compatible base URL.")
+    parser.add_argument("--api-key", dest="api_key", help="Third-party OpenAI-compatible API key.")
+    parser.add_argument("--model", help="Model name on the third-party endpoint.")
+    parser.add_argument("--prompt", help="Prompt text to enhance.")
+    parser.add_argument("prompt_parts", nargs="*", help=argparse.SUPPRESS)
+    return parser.parse_args()
+
+
 def debug_enabled() -> bool:
-    """Return True when debug logging is explicitly enabled."""
     value = os.environ.get("PE_DEBUG", "")
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def get_env_or_default(name: str, default: str) -> str:
-    """Return default when an env var is missing or blank."""
-    value = os.environ.get(name)
-    if value is None:
-        return default
+def resolve_prompt(args: argparse.Namespace) -> str:
+    prompt = args.prompt.strip() if args.prompt else ""
+    if prompt:
+        return prompt
+    joined = " ".join(args.prompt_parts).strip()
+    if joined:
+        return joined
+    raise ValueError("Missing prompt. Pass --prompt \"...\" or a positional prompt.")
 
-    value = value.strip()
-    return value or default
+
+def first_non_empty(*values: str) -> str:
+    for value in values:
+        stripped = value.strip()
+        if stripped:
+            return stripped
+    return ""
 
 
-def enhance_with_anthropic(prompt: str, api_key: str) -> str:
-    """Enhance prompt using Anthropic API."""
+def env_value(*names: str) -> str:
+    return first_non_empty(*(os.environ.get(name, "") for name in names))
+
+
+def resolve_config(args: argparse.Namespace) -> Tuple[str, str, str, str]:
+    api_url = (args.api_url or os.environ.get("PE_API_URL", "")).strip()
+    api_key = (args.api_key or os.environ.get("PE_API_KEY", "")).strip()
+    model = (args.model or os.environ.get("PE_MODEL", "")).strip()
+
+    missing = []
+    if not api_url:
+        missing.append("url")
+    if not api_key:
+        missing.append("apiKey")
+    if not model:
+        missing.append("model")
+    if missing:
+        has_openai_compatible_transport = bool(api_url or api_key)
+        if has_openai_compatible_transport:
+            raise ValueError(
+                "Missing third-party OpenAI-compatible config: "
+                + ", ".join(missing)
+                + ". If these fields are unavailable, use the current agent directly."
+            )
+
+        legacy_anthropic_key = env_value("ANTHROPIC_API_KEY")
+        if legacy_anthropic_key:
+            return "anthropic", "", legacy_anthropic_key, first_non_empty(model, "claude-sonnet-4-20250514")
+
+        legacy_openai_key = env_value("OPENAI_API_KEY")
+        if legacy_openai_key:
+            return "openai", "", legacy_openai_key, first_non_empty(model, "gpt-4o")
+
+        raise ValueError(
+            "Missing third-party OpenAI-compatible config: "
+            + ", ".join(missing)
+            + ". If these fields are unavailable, use the current agent directly."
+        )
+    return "openai-compatible", api_url, api_key, model
+
+
+def enhance_with_anthropic(prompt: str, api_key: str, model: str) -> str:
     try:
         import anthropic
     except ImportError:
-        raise RuntimeError(
-            "Missing dependency: anthropic. Install dependencies for the configured provider."
-        ) from None
+        raise RuntimeError("Missing dependency: anthropic. Install dependencies for the configured provider.") from None
 
     client = anthropic.Anthropic(api_key=api_key)
     message = client.messages.create(
-        model=get_env_or_default("PE_MODEL", "claude-sonnet-4-20250514"),
+        model=model,
         max_tokens=2048,
         system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}]
+        messages=[{"role": "user", "content": prompt}],
     )
     return message.content[0].text
 
 
-def enhance_with_openai(prompt: str, api_key: str) -> str:
-    """Enhance prompt using OpenAI API."""
-    try:
-        import openai
-    except ImportError:
-        raise RuntimeError(
-            "Missing dependency: openai. Install dependencies for the configured provider."
-        ) from None
+def _extract_response_text(response) -> str:
+    content = response.choices[0].message.content
+    if isinstance(content, str):
+        return content
+    if content is None:
+        raise RuntimeError("The provider returned an empty response.")
+    return str(content)
 
-    client = openai.OpenAI(api_key=api_key)
+
+def enhance_with_openai(prompt: str, api_key: str, model: str, api_url: str = "") -> str:
+    try:
+        from openai import OpenAI
+    except ImportError:
+        raise RuntimeError("Missing dependency: openai. Install dependencies for the configured provider.") from None
+
+    kwargs = {"api_key": api_key}
+    if api_url:
+        kwargs["base_url"] = api_url
+    client = OpenAI(**kwargs)
     response = client.chat.completions.create(
-        model=get_env_or_default("PE_MODEL", "gpt-4o"),
+        model=model,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt}
-        ]
+            {"role": "user", "content": prompt},
+        ],
     )
-    return response.choices[0].message.content
+    return _extract_response_text(response)
 
 
-def enhance_locally(prompt: str) -> str:
-    """Enhance prompt using local template (no API)."""
-    return f"""# Context
-[Add only the known repo, file, stack, or runtime context. If unknown, use placeholders like [files], [stack], or [environment].]
-
-# Objective
-{prompt}
-
-# Step-by-Step Instructions
-1. Restate the task precisely without changing the user's intent.
-2. Carry forward every explicit constraint from the original prompt.
-3. Add only the minimum missing execution context needed to act.
-4. If important details are unknown, leave placeholders instead of inventing requirements.
-5. Return the rewritten prompt in this structure.
-
-# Constraints
-- Preserve the user's intent and explicit constraints.
-- Do not invent product, compatibility, or implementation requirements.
-- Keep the result concise, specific, and actionable for a coding agent.
-"""
-
-
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: prompt_enhancer_entry.py <prompt>", file=sys.stderr)
-        print("Example: prompt_enhancer_entry.py 'Write a login component'", file=sys.stderr)
-        print("Environment: ANTHROPIC_API_KEY | OPENAI_API_KEY | PE_MODEL", file=sys.stderr)
-        sys.exit(1)
-
-    prompt = " ".join(sys.argv[1:])
-
-    # Try Anthropic first, then OpenAI, then local
-    anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
-    openai_key = os.environ.get("OPENAI_API_KEY")
-
+def main() -> None:
     try:
-        if anthropic_key:
-            result = enhance_with_anthropic(prompt, anthropic_key)
-        elif openai_key:
-            result = enhance_with_openai(prompt, openai_key)
+        args = parse_args()
+        prompt = resolve_prompt(args)
+        provider, api_url, api_key, model = resolve_config(args)
+        if provider == "anthropic":
+            print(enhance_with_anthropic(prompt, api_key, model))
         else:
-            result = enhance_locally(prompt)
-
-        print(result)
-    except Exception as e:
+            print(enhance_with_openai(prompt, api_key, model, api_url))
+    except Exception as exc:
         if debug_enabled():
-            print(f"Error: {e}", file=sys.stderr)
-            print("\nFalling back to local template...", file=sys.stderr)
-        print(enhance_locally(prompt))
+            print(f"Error: {exc}", file=sys.stderr)
+        else:
+            msg = str(exc)
+            if "Missing third-party OpenAI-compatible config" in msg:
+                print("Missing API configuration. Use the current agent directly instead, or set PE_API_URL, PE_API_KEY, PE_MODEL.", file=sys.stderr)
+            else:
+                print(msg, file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -112,7 +112,7 @@ npx abelworkflow --help
 |---|---|---|
 | `grok-search` | `~/.agents/skills/grok-search/.env` | `GROK_API_URL` `GROK_API_KEY` `GROK_MODEL` |
 | `context7-auto-research` | `~/.agents/skills/context7-auto-research/.env` | `CONTEXT7_API_KEY` |
-| `prompt-enhancer` | `~/.agents/skills/prompt-enhancer/.env` | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` `PE_MODEL` |
+| `prompt-enhancer` | `~/.agents/skills/prompt-enhancer/.env` | `PE_API_URL` `PE_API_KEY` `PE_MODEL` |
 
 ### 方法二：源码克隆安装
 
